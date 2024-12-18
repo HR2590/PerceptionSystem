@@ -1,6 +1,8 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 #include "PerceptionComponent.h"
 #include "PerformActionBase.h"
+#include "Components/ArrowComponent.h"
+#include "Microsoft/AllowMicrosoftPlatformTypes.h"
 
 
 // Sets default values for this component's properties
@@ -10,7 +12,7 @@ UPerceptionComponent::UPerceptionComponent()
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickInterval=0.0f;
-	
+
 }
 
 
@@ -18,63 +20,70 @@ UPerceptionComponent::UPerceptionComponent()
 void UPerceptionComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	auto Lambda = [this](){};
-	if (!PerceptionInfo.USenseImplementation) return;
-	PerformObject = NewObject<UPerformActionBase>(this,PerceptionInfo.USenseImplementation);
-	OnTimerEvent.AddUObject(this, &UPerceptionComponent::OnPerformAction);
-	OnTimerEvent.AddUObject(this, &UPerceptionComponent::OnTimerCheck);
-	GetWorld()->GetTimerManager().SetTimer(
-	TimerHandle,[this]()->void{this->OnTimerEvent.Broadcast();}
-	,PerceptionInfo.PerceptionTickInterval,true);
-	
-	
-
-	
-	
-
-
+	if (!PerceptionInfo.SenseImplementation) return;
+	PerformObject = NewObject<UPerformActionBase>(this,PerceptionInfo.SenseImplementation);
+	TimerStartWithInterval(PerceptionInfo.PerceptionTickInterval);
 }
 
-// Called every frame
-void UPerceptionComponent::TickComponent(float DeltaTime, ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	
-}
 
-void UPerceptionComponent::OnPerformAction()
+void UPerceptionComponent::PerformAction()
 {
-	if (!PerceptionInfo.IsPerceptionActive||!PerceptionInfo.USenseImplementation) return;
-	if (PerceptionInfo.USenseImplementation!=PerformObject->GetClass())
+	TimerStartWithInterval(PerceptionInfo.PerceptionTickInterval);
+	if (!PerceptionInfo.SenseImplementation)return;
+	if (PerceptionInfo.SenseImplementation!=PerformObject->GetClass())
 	{
 		PerformObject->ConditionalBeginDestroy();
-		PerformObject = NewObject<UPerformActionBase>(this,PerceptionInfo.USenseImplementation);
+		PerformObject = NewObject<UPerformActionBase>(this,PerceptionInfo.SenseImplementation);
 	}
-	PerformObject->DoAction(GetOwner(),PerceptionInfo);
+	if (PerceptionInfo.IsPerceptionActive)PerformObject->DoAction(GetOwner(),PerceptionInfo);
+	
 	
 }
 
-void UPerceptionComponent::OnTimerCheck()
+void UPerceptionComponent::TimerStartWithInterval(const float InTimerInterval)
 {
-	if (PerceptionInfo.PerceptionTickInterval!=GetWorld()->GetTimerManager().GetTimerRate(TimerHandle))
-	{
-		TimerHandle.Invalidate();
-		GetWorld()->GetTimerManager().SetTimer(
-	TimerHandle,[this]()->void{this->OnTimerEvent.Broadcast();}
-	,PerceptionInfo.PerceptionTickInterval,true);
-	}
+	if (TimerHandle.IsValid())TimerHandle.Invalidate();
+	GetWorld()->GetTimerManager().SetTimer(
+	TimerHandle,this,&ThisClass::PerformAction,InTimerInterval,false);
+	
 }
 
-void UPerceptionComponent::SetPerception(const bool& InStatus)
-{
-	PerceptionInfo.IsPerceptionActive=InStatus;
-}
 
 void UPerceptionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	TimerHandle.Invalidate();
 }
+
+void UPerceptionComponent::AttachSKMesh(const FName& InSocketName)
+{
+	if (PerceptionInfo.AllSocketNames.IsEmpty()||!GetSkeletonMesh())return;
+	if (PerceptionInfo.AllSocketNames.Contains(InSocketName))
+	{
+		UE_LOG(LogTemp,Warning,TEXT("true"));
+		PerceptionInfo.ShapeLocation->AttachToComponent(GetSkeletonMesh(),FAttachmentTransformRules::SnapToTargetIncludingScale,InSocketName);
+		
+	}
+}
+
+void UPerceptionComponent::GetAllSockets(TArray<FName>& OutSockets) const
+{
+	if (!GetSkeletonMesh())return;
+	OutSockets.Empty();
+	OutSockets.Append(GetSkeletonMesh()->GetAllSocketNames());
+
+}
+
+USkeletalMeshComponent* UPerceptionComponent::GetSkeletonMesh() const
+{
+	if (!GetOwner()) return nullptr;
+		return GetOwner()->FindComponentByClass<USkeletalMeshComponent>();
+}
+
+
+
+
+
 
 
 
